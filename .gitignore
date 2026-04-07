@@ -9,3 +9,5 @@ wheels/
 # Virtual environments
 .venv
 cifar-10.zip
+CLAUDE.md
+GEMINI.md

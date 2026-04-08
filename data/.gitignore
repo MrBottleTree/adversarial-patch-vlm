@@ -1,2 +1,3 @@
 train.7z
 train/
+imagenet_val/data/validation-*

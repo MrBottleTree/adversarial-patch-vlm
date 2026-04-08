@@ -50,23 +50,26 @@ def apply_adversarial_patch(patch, attack, x, patch_location=None):
         patch:          np.ndarray (3, 56, 56) from generate_adversarial_patch
         attack:         AdversarialPatch instance from generate_adversarial_patch
         x:              np.ndarray (N, 3, 224, 224) — images to patch
-        patch_location: int 0-15 (cell in 4x4 grid), or None for random placement
+        patch_location: int 0-15 (cell in 4x4 grid), or None for random placement via ART
 
     Returns:
         np.ndarray (N, 3, 224, 224) — patched images
     """
-    if patch_location is not None:
-        if not (0 <= patch_location <= 15):
-            raise ValueError("patch_location must be between 0 and 15.")
-        row = patch_location // GRID_COLS
-        col = patch_location % GRID_COLS
-        center_y = row * CELL_SIZE + CELL_SIZE // 2
-        center_x = col * CELL_SIZE + CELL_SIZE // 2
-        mask = np.zeros((x.shape[0], 224, 224), dtype=bool)
-        mask[:, center_y, center_x] = True
-        return attack.apply_patch(x=x, scale=PATCH_SCALE, patch_external=patch, mask=mask)
-    else:
+    if patch_location is None:
         return attack.apply_patch(x=x, scale=PATCH_SCALE, patch_external=patch)
+
+    if not (0 <= patch_location <= 15):
+        raise ValueError("patch_location must be between 0 and 15.")
+
+    row = patch_location // GRID_COLS
+    col = patch_location % GRID_COLS
+    y0 = row * CELL_SIZE
+    x0 = col * CELL_SIZE
+
+    # Direct pixel stamping — avoids ART's mask boundary validation entirely
+    x_patched = x.copy()
+    x_patched[:, :, y0:y0 + CELL_SIZE, x0:x0 + CELL_SIZE] = np.clip(patch, 0.0, 1.0)
+    return x_patched
 
 
 def save_patched_image(x_patched, output_dir, filename):

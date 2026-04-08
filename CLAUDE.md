@@ -1,28 +1,30 @@
-# Project Context: Information Retrieval - Adversarial Misclassification
+# Project Context: Adversarial Patch — VLM Robustness Evaluation
 
 ## Project Objective
-To build an evaluation pipeline that tests the robustness of various pre-trained image classification models. The core goal is to quantify vulnerabilities to adversarial inputs (patches/noise) across diverse architectures.
+Build an evaluation pipeline that tests the robustness of pre-trained image classification models against adversarial patches. Core goal: quantify vulnerabilities across diverse architectures using a mathematically optimized, location-independent patch.
 
-## Current Status: Phase 2 - Evaluation & High-Resolution Transition
-Moved from data collection to rigorous evaluation and resolution upgrading.
+## Current Status: Phase 3 — Adversarial Patch Generation & Evaluation
 
-### Completed Progress:
-* **Surgical Patching Pipeline:** Implemented `model_factory.py` and `patch_utility.py` for exact 8x8 patching (no pixel bleed).
-* **Relative Subset Probability:** Created `eval_utility.py` to calculate probability relative to 10 target classes, resolving the 1000-class dilution problem.
-* **Architecture Suite:** 6 models: ResNet-18, VGG-16, ViT, Swin Transformer, ConvNeXt, CLIP.
-* **Insight:** Confirmed that ViTs/Transformers are more robust to low-res/blurry inputs than CNNs due to global attention vs. local kernels.
+### Completed:
+* **Dataset:** ImageNet-1k validation set downloaded as 14 parquet shards (`data/imagenet_val/data/validation-*.parquet`, 6.3GB, ~50k images, columns: `image` (bytes), `label` (int 0–999)).
+* **Refactor:** All CIFAR-10 code removed. Pipeline is fully ImageNet/224x224 native.
+* **model_factory.py:** 6 models — ResNet-18, VGG-16 (torchvision, real VGG not MobileNet), ViT, Swin, ConvNeXt, CLIP (zero-shot over 1000 ImageNet classes via torchvision class names). All expect `(N, 3, 224, 224)` float32 input in `[0, 1]`.
+* **patch_utility.py:** `generate_adversarial_patch()` calls ART's `.generate()` for gradient-optimized patches. `apply_adversarial_patch()` uses direct pixel stamping (NOT ART's mask system — mask boundary validation causes `ValueError` when center pixels fall on edge). Patch is 56×56 (1/16th area of 224×224), placed on a 4×4 grid (16 locations).
+* **eval_utility.py:** `load_imagenet_batch()` reads from parquet. `evaluate_patch()` returns clean/patched accuracy and mean P(true class). `evaluate_all_models()` runs all 6 models.
+* **playground.ipynb:** End-to-end notebook: load → generate patch → location test → transferability across 6 models → save.
 
-## Workflow Strategy
-We are transitioning from CIFAR-10 (32x32) to **ImageNet-1k Validation (224x224)** to eliminate resolution bottlenecks and ensure high clean-image accuracy (>90%) for baseline measurements.
+### Key Design Decisions:
+* **ART mask system avoided:** `apply_patch()` with a single-pixel mask raises `ValueError: a must be greater than 0` because ART zeros out boundary pixels. Direct numpy stamping is used instead.
+* **Patch scale:** `scale_min=0.24, scale_max=0.25` (ART requires `scale_min < scale_max`).
+* **Batch size:** Keep ≤ 8 images for GTX 1050 (2–4GB VRAM).
+* **Device:** Auto-selects CUDA if available (`"cuda" if torch.cuda.is_available() else "cpu"`).
+* **Metric:** Direct P(true class) from softmax — no CIFAR-to-ImageNet remapping needed.
 
-### 1. Automated Dataset Sourcing
-* **Kaggle CLI:** Used for automated download of `ILSVRC2012_img_val.tar`.
-* **Environment:** Configured with `KAGGLE_USERNAME` and `KAGGLE_KEY`.
+## Hardware
+* GPU: NVIDIA GTX 1050 (2–4GB VRAM)
+* CPU training: ~25 min / 500 iter. GPU training: ~2–3 min / 500 iter.
 
-### 2. Metric Specification
-* **Relative Probability:** Calculated as P(True Class) / Sum(P(All 10 target classes)) to normalize across models.
-
-## Immediate Action Items
-1. **Infrastructure:** Finish downloading and extracting the ImageNet-1k Validation set.
-2. **Refactor:** Update `eval_utility.py` and `patch_utility.py` for 224x224 native image processing.
-3. **Execution:** Benchmarking baseline and patched probabilities across the 6-model suite.
+## Immediate Next Steps
+1. Run full patch generation on GPU and verify location-independence across all 16 locations.
+2. Run transferability evaluation across all 6 models.
+3. Analyze which architectures (CNNs vs Transformers) are more vulnerable.
